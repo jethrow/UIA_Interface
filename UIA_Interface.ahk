@@ -89,12 +89,12 @@ class UIA_Interface extends UIA_Base {
 	;~ RemoveAllEventHandlers 	41
 	;~ IntNativeArrayToSafeArray 	42
 	;~ IntSafeArrayToNativeArray 	43
-	RectToVariant(ByRef rc, ByRef out) {	; in:{left,top,right,bottom} ; out:(left,top,width,height)
+	RectToVariant(ByRef rc, ByRef out="") {	; in:{left,top,right,bottom} ; out:(left,top,width,height)
 		; in:	RECT Struct
 		; out:	AHK Wrapped SafeArray & ByRef Variant
 		return UIA_Hr(DllCall(this.Vt(44), "ptr",this.__Value, "ptr",&rc, "ptr",UIA_Variant(out)))? UIA_VariantData(out):
 	}
-	;~ VariantToRect(ByRef var, ByRef out) { ; NOT WORKING
+	;~ VariantToRect(ByRef var, ByRef out="") { ; NOT WORKING
 		;~ ; in:	VT_VARIANT (SafeArray)
 		;~ ; out:	AHK Wrapped RECT Struct & ByRef Struct
 		;~ return UIA_Hr(DllCall(this.Vt(45), "ptr",this.__Value, "ptr",var, "ptr",&(out,VarSetCapacity(out,16))))? UIA_RectToObject(out):
