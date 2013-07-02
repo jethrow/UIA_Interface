@@ -87,12 +87,17 @@ class UIA_Interface extends UIA_Base {
 	;~ AddFocusChangedEventHandler 	39
 	;~ RemoveFocusChangedEventHandler 	40
 	;~ RemoveAllEventHandlers 	41
-	;~ IntNativeArrayToSafeArray 	42
-	;~ IntSafeArrayToNativeArray 	43
-	RectToVariant(ByRef rc, ByRef out="") {	; in:{left,top,right,bottom} ; out:(left,top,width,height)
+	IntNativeArrayToSafeArray(ByRef nArr, n="") {
+		return UIA_Hr(DllCall(this.Vt(42), "ptr",this.__Value, "ptr",&nArr, "int",n?n:VarSetCapacity(nArr)/4, "ptr*",out))? ComObj(0x2003,out,1):
+	}
+	;~ IntSafeArrayToNativeArray(sArr, Byref nArr="", Byref arrayCount="") { ; NOT WORKING
+		;~ VarSetCapacity(nArr,(sArr.MaxIndex()+1)*4)
+		;~ return UIA_Hr(DllCall(this.Vt(43), "ptr",this.__Value, "ptr",ComObjValue(sArr), "ptr*",nArr, "int*",arrayCount))? arrayCount:
+	;~ }
+	RectToVariant(ByRef rect, ByRef out="") {	; in:{left,top,right,bottom} ; out:(left,top,width,height)
 		; in:	RECT Struct
 		; out:	AHK Wrapped SafeArray & ByRef Variant
-		return UIA_Hr(DllCall(this.Vt(44), "ptr",this.__Value, "ptr",&rc, "ptr",UIA_Variant(out)))? UIA_VariantData(out):
+		return UIA_Hr(DllCall(this.Vt(44), "ptr",this.__Value, "ptr",&rect, "ptr",UIA_Variant(out)))? UIA_VariantData(out):
 	}
 	;~ VariantToRect(ByRef var, ByRef out="") { ; NOT WORKING
 		;~ ; in:	VT_VARIANT (SafeArray)
@@ -101,11 +106,25 @@ class UIA_Interface extends UIA_Base {
 	;~ }
 	;~ SafeArrayToRectNativeArray 	46
 	;~ CreateProxyFactoryEntry 	47
-	;~ GetPropertyProgrammaticName 	49
-	;~ GetPatternProgrammaticName 	50
-	;~ PollForPotentialSupportedPatterns 	51
-	;~ PollForPotentialSupportedProperties 	52
-	;~ CheckNotSupported 	53
+	GetPropertyProgrammaticName(Id) {
+		return UIA_Hr(DllCall(this.Vt(49), "ptr",this.__Value, "int",Id, "ptr*",out))? StrGet(out):
+	}
+	GetPatternProgrammaticName(Id) {
+		return UIA_Hr(DllCall(this.Vt(50), "ptr",this.__Value, "int",Id, "ptr*",out))? StrGet(out):
+	}
+	PollForPotentialSupportedPatterns(e, Byref Ids="", Byref Names="") {
+		return UIA_Hr(DllCall(this.Vt(51), "ptr",this.__Value, "ptr",e.__Value, "ptr*",Ids, "ptr*",Names))? UIA_SafeArraysToObject(Names:=ComObj(0x2008,Names,1),Ids:=ComObj(0x2003,Ids,1)):
+	}
+	PollForPotentialSupportedProperties(e, Byref Ids="", Byref Names="") {
+		return UIA_Hr(DllCall(this.Vt(52), "ptr",this.__Value, "ptr",e.__Value, "ptr*",Ids, "ptr*",Names))? UIA_SafeArraysToObject(Names:=ComObj(0x2008,Names,1),Ids:=ComObj(0x2003,Ids,1)):
+	}
+	CheckNotSupported(value) { ; Useless in this Framework???
+	/*	Checks a provided VARIANT to see if it contains the Not Supported identifier.
+		After retrieving a property for a UI Automation element, call this method to determine whether the element supports the 
+		retrieved property. CheckNotSupported is typically called after calling a property retrieving method such as GetCurrentPropertyValue.
+	*/
+		return UIA_Hr(DllCall(this.Vt(53), "ptr",this.__Value, "ptr",value, "int*",out))? out:
+	}
 	ElementFromIAccessible(IAcc, childId=0) {
 	/* The method returns E_INVALIDARG - "One or more arguments are not valid" - if the underlying implementation of the
 	Microsoft UI Automation element is not a native Microsoft Active Accessibility server; that is, if a client attempts to retrieve
@@ -136,7 +155,7 @@ class UIA_Element extends UIA_Base {
 	;~ FindFirstBuildCache 	7	IUIAutomationElement
 	;~ FindAllBuildCache 	8	IUIAutomationElementArray
 	;~ BuildUpdatedCache 	9	IUIAutomationElement
-	GetCurrentPropertyValue(propertyid) {
+	GetCurrentPropertyValue(propertyid, ByRef out="") {
 		return UIA_Hr(DllCall(this.Vt(10), "ptr",this.__Value, "uint",propertyid, "ptr",UIA_Variant(out)))? UIA_VariantData(out):
 	}
 	;~ GetCurrentPropertyValueEx 	11	VARIANT
@@ -254,10 +273,12 @@ class UIA_CacheRequest  extends UIA_Base {
 
 {  ;~ UIA Functions
 	UIA_Interface() {
-		if uia:=ComObjCreate("{ff48dba4-60ef-4201-aa87-54103eef594e}","{30cbe57d-d9d0-452a-ab13-7ac5ac4825ee}")
-			return uia:=new UIA_Interface(uia), UIA_Base.__UIA:=uia
-		else
-			MsgBox, 262160, UIA Error, UIAutomation Interface failed to initialize.
+		try {
+			if uia:=ComObjCreate("{ff48dba4-60ef-4201-aa87-54103eef594e}","{30cbe57d-d9d0-452a-ab13-7ac5ac4825ee}")
+				return uia:=new UIA_Interface(uia), UIA_Base.__UIA:=uia
+			throw "UIAutomation Interface failed to initialize."
+		} catch e
+			MsgBox, 262160, UIA Startup Error, % IsObject(e)?"IUIAutomation Interface is not registered.":e.Message
 	}
 	UIA_Hr(hr) {
 		;~ http://blogs.msdn.com/b/eldar/archive/2007/04/03/a-lot-of-hresult-codes.aspx
@@ -269,7 +290,7 @@ class UIA_CacheRequest  extends UIA_Base {
 		return !hr
 	}
 	UIA_ElementArray(p, uia="") {
-		a:=new UIA_ElementArray(p), out:=[]
+		a:=new UIA_ElementArray(p),out:=[]
 		Loop % a.Length
 			out[A_Index-1]:=a.GetElement(A_Index-1)
 		return out, out.base:={UIA_ElementArray:a}
@@ -284,22 +305,29 @@ class UIA_CacheRequest  extends UIA_Base {
 		Loop Parse, sides
 			NumPut(this[A_LoopField],r,(A_Index-1)*4,"Int")
 	}
+	UIA_SafeArraysToObject(keys,values) {
+	;~	1 dim safearrays w/ same # of elements
+		out:={}
+		for key in keys
+			out[key]:=values[A_Index-1]
+		return out
+	}
 	UIA_Hex(p) {
-		setting := A_FormatInteger
-		SetFormat, IntegerFast, H
-		out := p+0 ""
-		SetFormat, IntegerFast, %setting%
+		setting:=A_FormatInteger
+		SetFormat,IntegerFast,H
+		out:=p+0 ""
+		SetFormat,IntegerFast,%setting%
 		return out
 	}
 	UIA_GUID(ByRef GUID, sGUID) { ;~ Converts a string to a binary GUID and returns its address.
-		VarSetCapacity(GUID, 16, 0)
-		return DllCall("ole32\CLSIDFromString", "wstr", sGUID, "ptr", &GUID) >= 0 ? &GUID : ""
+		VarSetCapacity(GUID,16,0)
+		return DllCall("ole32\CLSIDFromString", "wstr",sGUID, "ptr",&GUID)>=0?&GUID:""
 	}
 	UIA_Variant(ByRef var,type=0,val=0) {
 		return (VarSetCapacity(var,8+2*A_PtrSize)+NumPut(type,var,0,"short")+NumPut(val,var,8,"ptr"))*0+&var
 	}
 	UIA_VariantData(ByRef p, flag=1) {
-		if Not Vt := NumGet(p,"Ushort")
+		if !Vt:=NumGet(p,"Ushort")
 			return "Invalid Variant"
 		else
 			return Vt=2? NumGet(p,8,"short")		; VT_I2
