@@ -1,6 +1,19 @@
 ﻿;~ UI Automation Constants: http://msdn.microsoft.com/en-us/library/windows/desktop/ee671207(v=vs.85).aspx
 ;~ UI Automation Enumerations: http://msdn.microsoft.com/en-us/library/windows/desktop/ee671210(v=vs.85).aspx
 
+/* Questions:
+	- better way to do get_properties?
+	- support for Constants?
+	- if method returns a SafeArray, should we return a Wrapped SafeArray, Raw SafeArray, or AHK Array
+	- on UIA Interface conversion methods, how should the data be returned? wrapped/extracted or raw? should raw data be a ByRef param?
+	- do variants need cleared? what about SysAllocString BSTRs?
+	- do RECT struts need destroyed?
+	- if returning wrapped data & raw is ByRef, will the wrapped data being released destroy the raw data?
+	- returning varaint data other than vt=3|8|9|13|0x2000
+	- Cached Members?
+	- UIA Element existance - dependent on window being visible (non minimized)?
+*/
+
 class UIA_Base {
 	__New(p="") {
 		ObjInsert(this, "__Type", "IUIAutomation" SubStr(this.__Class,5))
@@ -69,22 +82,28 @@ class UIA_Interface extends UIA_Base {
 	;~ CreateCacheRequest 	20
 
 	CreateTrueCondition() {
-		return UIA_Hr(DllCall(this.Vt(21), "ptr",this.__Value, "ptr*",out))? new UIA_PropertyCondition(out):
+		return UIA_Hr(DllCall(this.Vt(21), "ptr",this.__Value, "ptr*",out))? new UIA_Condition(out):
 	}
 	CreateFalseCondition() {
-		return UIA_Hr(DllCall(this.Vt(22), "ptr",this.__Value, "ptr*",out))? new UIA_PropertyCondition(out):
+		return UIA_Hr(DllCall(this.Vt(22), "ptr",this.__Value, "ptr*",out))? new UIA_Condition(out):
 	}
-	CreatePropertyCondition(Id, ByRef var, type="Variant") {
+	CreatePropertyCondition(propertyId, ByRef var, type="Variant") {
 		if (type!="Variant")
 			UIA_Variant(var,type,var)
-		return UIA_Hr(DllCall(this.Vt(23), "ptr",this.__Value, "int",Id, "ptr",&var, "ptr*",out))? new UIA_PropertyCondition(out):
+		return UIA_Hr(DllCall(this.Vt(23), "ptr",this.__Value, "int",propertyId, "ptr",&var, "ptr*",out))? new UIA_PropertyCondition(out):
 	}
 	;~ CreatePropertyConditionEx 	24
 	CreateAndCondition(c1,c2) {
 		return UIA_Hr(DllCall(this.Vt(25), "ptr",this.__Value, "ptr",c1.__Value, "ptr",c2.__Value, "ptr*",out))? new UIA_AndCondition(out):
 	}
-	;~ CreateAndConditionFromArray 	26
-	;~ CreateAndConditionFromNativeArray 	27
+	CreateAndConditionFromArray(array) { ; NON WORKING with manually created SafeArray
+		return UIA_Hr(DllCall(this.Vt(26), "ptr",this.__Value, "ptr",ComObjValue(array), "ptr*",out))? new UIA_AndCondition(out):
+	}
+/*	CreateAndConditionFromNativeArray 	27
+		[in]           IUIAutomationCondition **conditions,
+		[in]           int conditionCount,
+		[out, retval]  IUIAutomationCondition **newCondition
+*/
 	CreateOrCondition(c1,c2) {
 		return UIA_Hr(DllCall(this.Vt(28), "ptr",this.__Value, "ptr",c1.__Value, "ptr",c2.__Value, "ptr*",out))? new UIA_OrCondition(out):
 	}
@@ -164,29 +183,42 @@ class UIA_Element extends UIA_Base {
 	GetRuntimeId(ByRef stringId="") {
 		return UIA_Hr(DllCall(this.Vt(4), "ptr",this.__Value, "ptr*",sa))? ComObj(0x2003,sa,1):
 	}
-	FindFirst(scope=0x2, cond="") {
-		return UIA_Hr(DllCall(this.Vt(5), "ptr",this.__Value, "uint",scope, "ptr",(cond=""?tc:=this.__uia.CreateTrueCondition():cond).__Value, "ptr*",out))? new UIA_Element(out):
+	FindFirst(c="", scope=0x2) {
+		static tc	; TrueCondition
+		if !tc
+			tc:=this.__uia.CreateTrueCondition()
+		return UIA_Hr(DllCall(this.Vt(5), "ptr",this.__Value, "uint",scope, "ptr",(c=""?tc:c).__Value, "ptr*",out))? new UIA_Element(out):
 	}
-	FindAll(cond="", scope=0x2) {
-		return UIA_Hr(DllCall(this.Vt(6), "ptr",this.__Value, "uint",scope, "ptr",(cond=""?tc:=this.__uia.CreateTrueCondition():cond).__Value, "ptr*",out))? UIA_ElementArray(out):
+	FindAll(c="", scope=0x2) {
+		static tc	; TrueCondition
+		if !tc
+			tc:=this.__uia.CreateTrueCondition()
+		return UIA_Hr(DllCall(this.Vt(6), "ptr",this.__Value, "uint",scope, "ptr",(c=""?tc:c).__Value, "ptr*",out))? UIA_ElementArray(out):
 	}
 	;~ FindFirstBuildCache 	7	IUIAutomationElement
 	;~ FindAllBuildCache 	8	IUIAutomationElementArray
 	;~ BuildUpdatedCache 	9	IUIAutomationElement
-	GetCurrentPropertyValue(propertyid, ByRef out="") {
-		return UIA_Hr(DllCall(this.Vt(10), "ptr",this.__Value, "uint",propertyid, "ptr",UIA_Variant(out)))? UIA_VariantData(out):
+	GetCurrentPropertyValue(propertyId, ByRef out="") {
+		return UIA_Hr(DllCall(this.Vt(10), "ptr",this.__Value, "uint",propertyId, "ptr",UIA_Variant(out)))? UIA_VariantData(out):
 	}
-	;~ GetCurrentPropertyValueEx 	11	VARIANT
+	GetCurrentPropertyValueEx(propertyId, ignoreDefaultValue=1, ByRef out="") {
+	; Passing FALSE in the ignoreDefaultValue parameter is equivalent to calling GetCurrentPropertyValue
+		return UIA_Hr(DllCall(this.Vt(11), "ptr",this.__Value, "uint",propertyId, "uint",ignoreDefaultValue, "ptr",UIA_Variant(out)))? UIA_VariantData(out):
+	}
 	;~ GetCachedPropertyValue 	12	VARIANT
 	;~ GetCachedPropertyValueEx 	13	VARIANT
-	GetCurrentPatternAs(patternid=10018) { ; Only LegacyIAccessible so far
-		return UIA_Hr(DllCall(this.Vt(14), "ptr",this.__Value, "int",patternid, "ptr",UIA_GUID(iid,UIA_LegacyIAccessiblePattern.iid), "ptr*",out))? new UIA_LegacyIAccessiblePattern(out):
+	GetCurrentPatternAs(patternid="", riid="") { ; Only LegacyIAccessible so far
+		patternid := 10018
+		riid := UIA_GUID(riid, UIA_LegacyIAccessiblePattern.iid)
+		return UIA_Hr(DllCall(this.Vt(14), "ptr",this.__Value, "int",patternid, "ptr",riid, "ptr*",out))? new UIA_LegacyIAccessiblePattern(out):
 	}
 	;~ GetCachedPatternAs 	15	void **ppv
 	;~ GetCurrentPattern 	16	Iunknown **patternObject
 	;~ GetCachedPattern 	17	Iunknown **patternObject
 	;~ GetCachedParent 	18	IUIAutomationElement
-	;~ GetCachedChildren 	19	IUIAutomationElementArray
+	GetCachedChildren() { ; Haven't successfully tested
+		return UIA_Hr(DllCall(this.Vt(19), "ptr",this.__Value, "ptr*",out))&&out? UIA_ElementArray(out):
+	}
 	;~ GetClickablePoint 	84	POINT, BOOL
 }
 
@@ -278,7 +310,6 @@ class UIA_Condition extends UIA_Base {
 	static IID := "{352ffba8-0973-437c-a61f-f64cafd81df9}"
 }
 
-
 class UIA_PropertyCondition extends UIA_Condition {
 	;~ http://msdn.microsoft.com/en-us/library/windows/desktop/ee696121(v=vs.85).aspx
 	static IID := "{99ebf2cb-5578-4267-9ad4-afd6ea77e94b}"
@@ -291,7 +322,9 @@ class UIA_AndCondition extends UIA_Condition {
 		,  get_properties := "|ChildCount,3,int|"
 	
 	;~ GetChildrenAsNativeArray	4	IUIAutomationCondition ***childArray
-	;~ GetChildren	5	SAFEARRAY
+	GetChildren() {
+		return UIA_Hr(DllCall(this.Vt(5), "ptr",this.__Value, "ptr*",out))&&out? ComObj(0x2003,out,1):
+	}
 }
 class UIA_OrCondition extends UIA_Condition {
 	;~ http://msdn.microsoft.com/en-us/library/windows/desktop/ee696108(v=vs.85).aspx
@@ -386,23 +419,24 @@ class UIA_CacheRequest  extends UIA_Base {
 	}
 	UIA_VariantData(ByRef p, flag=1) {
 		; based on Sean's COM_Enumerate function
+		; need to clear varaint? what if you still need it (flag param)?
 		return !UIA_IsVariant(p,vt)? "Invalid Variant"
 			: vt=3?	NumGet(p,8,"int")
 			: vt=8? StrGet(NumGet(p,8))
 			: vt=9||vt=13||vt&0x2000? ComObj(vt,NumGet(p,8),flag)
-			: vt<0x1000&&UIA_VariantChangeType(&p,&p)=0? StrGet(NumGet(p,8)) UIA_VariantClear(&p) ; need to clear varaint? what if you still need it (flag param)?
+			: vt<0x1000&&UIA_VariantChangeType(&p,&p)=0? StrGet(NumGet(p,8)) UIA_VariantClear(&p)
 			: NumGet(p,8)
 	/*
-		VT_EMPTY     =      0  ; No value
-		VT_NULL      =      1  ; SQL-style Null
-		VT_I2        =      2  ; 16-bit signed int
-		VT_I4        =      3  ; 32-bit signed int
-		VT_R4        =      4  ; 32-bit floating-point number
-		VT_R8        =      5  ; 64-bit floating-point number
-		VT_CY        =      6  ; Currency
-		VT_DATE      =      7  ; Date
-		VT_BSTR      =      8  ; COM string (Unicode string with length prefix)
-		VT_DISPATCH  =      9  ; COM object 
+		VT_EMPTY     =      0  		; No value
+		VT_NULL      =      1 		; SQL-style Null
+		VT_I2        =      2 		; 16-bit signed int
+		VT_I4        =      3 		; 32-bit signed int
+		VT_R4        =      4 		; 32-bit floating-point number
+		VT_R8        =      5 		; 64-bit floating-point number
+		VT_CY        =      6 		; Currency
+		VT_DATE      =      7  		; Date
+		VT_BSTR      =      8 		; COM string (Unicode string with length prefix)
+		VT_DISPATCH  =      9 		; COM object 
 		VT_ERROR     =    0xA  10	; Error code (32-bit integer)
 		VT_BOOL      =    0xB  11	; Boolean True (-1) or False (0)
 		VT_VARIANT   =    0xC  12	; VARIANT (must be combined with VT_ARRAY or VT_BYREF)
@@ -417,9 +451,9 @@ class UIA_CacheRequest  extends UIA_Base {
 		VT_INT       =   0x16  22	; Signed machine int
 		VT_UINT      =   0x17  23	; Unsigned machine int
 		VT_RECORD    =   0x24  36	; User-defined type
-		VT_ARRAY     = 0x2000  ; SAFEARRAY
-		VT_BYREF     = 0x4000  ; Pointer to another type of value
-					 = 0x1000	4096
+		VT_ARRAY     = 0x2000  		; SAFEARRAY
+		VT_BYREF     = 0x4000  		; Pointer to another type of value
+					 = 0x1000  4096
 
 		COM_VariantChangeType(pvarDst, pvarSrc, vt=8) {
 			return DllCall("oleaut32\VariantChangeTypeEx", "ptr",pvarDst, "ptr",pvarSrc, "Uint",1024, "Ushort",0, "Ushort",vt)
