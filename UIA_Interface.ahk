@@ -1,8 +1,9 @@
 ﻿;~ UI Automation Constants: http://msdn.microsoft.com/en-us/library/windows/desktop/ee671207(v=vs.85).aspx
 ;~ UI Automation Enumerations: http://msdn.microsoft.com/en-us/library/windows/desktop/ee671210(v=vs.85).aspx
+;~ http://www.autohotkey.com/board/topic/94619-ahk-l-screen-reader-a-tool-to-get-text-anywhere/
 
 /* Questions:
-	- better way to do get_properties?
+	- better way to do __properties?
 	- support for Constants?
 	- if method returns a SafeArray, should we return a Wrapped SafeArray, Raw SafeArray, or AHK Array
 	- on UIA Interface conversion methods, how should the data be returned? wrapped/extracted or raw? should raw data be a ByRef param?
@@ -16,88 +17,95 @@
 
 class UIA_Base {
 	__New(p="") {
-		ObjInsert(this, "__Type", "IUIAutomation" SubStr(this.__Class,5))
-		ObjInsert(this, "__Value", p)
+		ObjInsert(this,"__Type","IUIAutomation" SubStr(this.__Class,5)),ObjInsert(this,"__Value",p)
 	}
 	__Get(member) {
-		if member not in base,__Class,__UIA ; base, __Class, & __UIA should act as normal
-			if RegExMatch(this.base.get_properties, "i)\|" member ",(\d+),(\w+)", m) { ; if the member is in the properties. if not - give error message
+		if member not in base,__UIA ; base & __UIA should act as normal
+		{	if raw:=SubStr(member,0)="*" ; return raw data - user should know what they are doing
+				member:=SubStr(member,1,-1)
+			if RegExMatch(this.__properties, "im)^" member ",(\d+),(\w+)", m) { ; if the member is in the properties. if not - give error message
 				if (m2="VARIANT")	; return VARIANT data - DllCall output param different
-					return UIA_Hr(DllCall(this.Vt(m1), "ptr",this.__Value, "ptr",UIA_Variant(out)))? UIA_VariantData(out):
+					return UIA_Hr(DllCall(this.__Vt(m1), "ptr",this.__Value, "ptr",UIA_Variant(out)))? (raw?out:UIA_VariantData(out)):
 				else if (m2="RECT") ; return RECT struct - DllCall output param different
-					return UIA_Hr(DllCall(this.Vt(m1), "ptr",this.__Value, "ptr",&(rect,VarSetCapacity(rect,16))))? UIA_RectToObject(rect):
-				else if UIA_Hr(DllCall(this.Vt(m1), "ptr",this.__Value, "ptr*",out))
-					return m2="BSTR"? StrGet(out):RegExMatch(m2,"i)IUIAutomation\K\w+",n)? new UIA_%n%(out):out ; Bool, int, DWORD, HWND, CONTROLTYPEID, OrientationType?
-			} else {
-				MsgBox, 262160, % this.__Class " Get Error", Property "%member%" is not supported.
-				return
+					return UIA_Hr(DllCall(this.__Vt(m1), "ptr",this.__Value, "ptr",&(rect,VarSetCapacity(rect,16))))? (raw?out:UIA_RectToObject(rect)):
+				else if UIA_Hr(DllCall(this.__Vt(m1), "ptr",this.__Value, "ptr*",out))
+					return raw?out:m2="BSTR"?StrGet(out):RegExMatch(m2,"i)IUIAutomation\K\w+",n)?new UIA_%n%(out):out ; Bool, int, DWORD, HWND, CONTROLTYPEID, OrientationType?
 			}
+			else throw Exception("Property not supported by the " this.__Class " Class.",-1,member)
+		}
 	}
 	__Set(member) {
-		MsgBox, 262160, % this.__Class " Set Error", Property "%member%" cannot be assigned a value.
-		return
+		throw Exception("Assigning values not supported by the " this.__Class " Class.",-1,member)
 	}
 	__Call(member) {
 		if !ObjHasKey(UIA_Base,member)&&!ObjHasKey(this,member)
-			MsgBox, 262160, % this.__Class " Call Error", Method "%member%" is not supported.
+			throw Exception("Method Call not supported by the " this.__Class " Class.",-1,member)
 	}
 	__Delete() {
 		ObjRelease(this.__Value)
 	}
-	Vt(n) {
+	__Vt(n) {
 		return NumGet(NumGet(this.__Value+0,"ptr")+n*A_PtrSize,"ptr")
 	}
 }	
 
 class UIA_Interface extends UIA_Base {
 	;~ http://msdn.microsoft.com/en-us/library/windows/desktop/ee671406(v=vs.85).aspx
-	static IID := "{30cbe57d-d9d0-452a-ab13-7ac5ac4825ee}"
-		,  get_properties := "|ControlViewWalker,14,IUIAutomationTreeWalker|ContentViewWalker,15,IUIAutomationTreeWalker|RawViewWalker,16,IUIAutomationTreeWalker|RawViewCondition,17,IUIAutomationCondition|ControlViewCondition,18,IUIAutomationCondition|ContentViewCondition,19,IUIAutomationCondition|ProxyFactoryMapping,48,IUIAutomationProxyFactoryMapping|ReservedNotSupportedValue,54,IUnknown|ReservedMixedAttributeValue,55,IUnknown|"
+	static __IID := "{30cbe57d-d9d0-452a-ab13-7ac5ac4825ee}"
+		,  __properties := "ControlViewWalker,14,IUIAutomationTreeWalker`r`nContentViewWalker,15,IUIAutomationTreeWalker`r`nRawViewWalker,16,IUIAutomationTreeWalker`r`nRawViewCondition,17,IUIAutomationCondition`r`nControlViewCondition,18,IUIAutomationCondition`r`nContentViewCondition,19,IUIAutomationCondition`r`nProxyFactoryMapping,48,IUIAutomationProxyFactoryMapping`r`nReservedNotSupportedValue,54,IUnknown`r`nReservedMixedAttributeValue,55,IUnknown"
 	
 	CompareElements(e1,e2) {
-		return UIA_Hr(DllCall(this.Vt(3), "ptr",this.__Value, "ptr",e1.__Value, "ptr",e2.__Value, "int*",out))? out:
+		return UIA_Hr(DllCall(this.__Vt(3), "ptr",this.__Value, "ptr",e1.__Value, "ptr",e2.__Value, "int*",out))? out:
 	}
 	CompareRuntimeIds(r1,r2) {
-		return UIA_Hr(DllCall(this.Vt(4), "ptr",this.__Value, "ptr",ComObjValue(r1), "ptr",ComObjValue(r2), "int*",out))? out:
+		return UIA_Hr(DllCall(this.__Vt(4), "ptr",this.__Value, "ptr",ComObjValue(r1), "ptr",ComObjValue(r2), "int*",out))? out:
 	}
 	GetRootElement() {
-		return UIA_Hr(DllCall(this.Vt(5), "ptr",this.__Value, "ptr*",out))? new UIA_Element(out):
+		return UIA_Hr(DllCall(this.__Vt(5), "ptr",this.__Value, "ptr*",out))? new UIA_Element(out):
 	}
 	ElementFromHandle(hwnd) {
-		return UIA_Hr(DllCall(this.Vt(6), "ptr",this.__Value, "ptr",hwnd, "ptr*",out))? new UIA_Element(out):
+		return UIA_Hr(DllCall(this.__Vt(6), "ptr",this.__Value, "ptr",hwnd, "ptr*",out))? new UIA_Element(out):
 	}
 	ElementFromPoint(x="", y="") {
-		return UIA_Hr(DllCall(this.Vt(7), "ptr",this.__Value, "int64",x==""||y==""?0*DllCall("GetCursorPos","Int64*",pt)+pt:x&0xFFFFFFFF|y<<32, "ptr*",out))? new UIA_Element(out):
+		return UIA_Hr(DllCall(this.__Vt(7), "ptr",this.__Value, "int64",x==""||y==""?0*DllCall("GetCursorPos","Int64*",pt)+pt:x&0xFFFFFFFF|y<<32, "ptr*",out))? new UIA_Element(out):
 	}	
 	GetFocusedElement() {
-		return UIA_Hr(DllCall(this.Vt(8), "ptr",this.__Value, "ptr*",out))? new UIA_Element(out):
+		return UIA_Hr(DllCall(this.__Vt(8), "ptr",this.__Value, "ptr*",out))? new UIA_Element(out):
 	}
 	;~ GetRootElementBuildCache 	9
 	;~ ElementFromHandleBuildCache 	10
 	;~ ElementFromPointBuildCache 	11
 	;~ GetFocusedElementBuildCache 	12
 	CreateTreeWalker() {
-		return UIA_Hr(DllCall(this.Vt(13), "ptr",this.__Value, "ptr",pCondition, "ptr*",out))? new UIA_TreeWalker(out):
+		return UIA_Hr(DllCall(this.__Vt(13), "ptr",this.__Value, "ptr",pCondition, "ptr*",out))? new UIA_TreeWalker(out):
 	}
 	;~ CreateCacheRequest 	20
 
 	CreateTrueCondition() {
-		return UIA_Hr(DllCall(this.Vt(21), "ptr",this.__Value, "ptr*",out))? new UIA_Condition(out):
+		return UIA_Hr(DllCall(this.__Vt(21), "ptr",this.__Value, "ptr*",out))? new UIA_Condition(out):
 	}
 	CreateFalseCondition() {
-		return UIA_Hr(DllCall(this.Vt(22), "ptr",this.__Value, "ptr*",out))? new UIA_Condition(out):
+		return UIA_Hr(DllCall(this.__Vt(22), "ptr",this.__Value, "ptr*",out))? new UIA_Condition(out):
 	}
 	CreatePropertyCondition(propertyId, ByRef var, type="Variant") {
 		if (type!="Variant")
 			UIA_Variant(var,type,var)
-		return UIA_Hr(DllCall(this.Vt(23), "ptr",this.__Value, "int",propertyId, "ptr",&var, "ptr*",out))? new UIA_PropertyCondition(out):
+		return UIA_Hr(DllCall(this.__Vt(23), "ptr",this.__Value, "int",propertyId, "ptr",&var, "ptr*",out))? new UIA_PropertyCondition(out):
 	}
 	;~ CreatePropertyConditionEx 	24
 	CreateAndCondition(c1,c2) {
-		return UIA_Hr(DllCall(this.Vt(25), "ptr",this.__Value, "ptr",c1.__Value, "ptr",c2.__Value, "ptr*",out))? new UIA_AndCondition(out):
+		return UIA_Hr(DllCall(this.__Vt(25), "ptr",this.__Value, "ptr",c1.__Value, "ptr",c2.__Value, "ptr*",out))? new UIA_AndCondition(out):
 	}
-	CreateAndConditionFromArray(array) { ; NON WORKING with manually created SafeArray
-		return UIA_Hr(DllCall(this.Vt(26), "ptr",this.__Value, "ptr",ComObjValue(array), "ptr*",out))? new UIA_AndCondition(out):
+	CreateAndConditionFromArray(array) { ; ComObj(0x2003)??
+	;->in: AHK Array or Wrapped SafeArray
+		if ComObjValue(array)&0x2000
+			SafeArray:=array
+		else {
+			SafeArray:=ComObj(0x2003,DllCall("oleaut32\SafeArrayCreateVector", "uint",13, "uint",0, "uint",array.MaxIndex()),1)
+			for i,c in array
+				SafeArray[A_Index-1]:=c.__Value, ObjAddRef(c.__Value) ; AddRef - SafeArrayDestroy will release UIA_Conditions - they also release themselves
+		}
+		return UIA_Hr(DllCall(this.__Vt(26), "ptr",this.__Value, "ptr",ComObjValue(SafeArray), "ptr*",out))? new UIA_AndCondition(out):
 	}
 /*	CreateAndConditionFromNativeArray 	27
 		[in]           IUIAutomationCondition **conditions,
@@ -105,149 +113,158 @@ class UIA_Interface extends UIA_Base {
 		[out, retval]  IUIAutomationCondition **newCondition
 */
 	CreateOrCondition(c1,c2) {
-		return UIA_Hr(DllCall(this.Vt(28), "ptr",this.__Value, "ptr",c1.__Value, "ptr",c2.__Value, "ptr*",out))? new UIA_OrCondition(out):
+		return UIA_Hr(DllCall(this.__Vt(28), "ptr",this.__Value, "ptr",c1.__Value, "ptr",c2.__Value, "ptr*",out))? new UIA_OrCondition(out):
 	}
 	;~ CreateOrConditionFromArray 	29
 	;~ CreateOrConditionFromNativeArray 	30
 	CreateNotCondition(c) {
-		return UIA_Hr(DllCall(this.Vt(31), "ptr",this.__Value, "ptr",c.__Value, "ptr*",out))? new UIA_NotCondition(out):
+		return UIA_Hr(DllCall(this.__Vt(31), "ptr",this.__Value, "ptr",c.__Value, "ptr*",out))? new UIA_NotCondition(out):
 	}
 
 	;~ AddAutomationEventHandler 	32
 	;~ RemoveAutomationEventHandler 	33
 	;~ AddPropertyChangedEventHandlerNativeArray 	34
-	;~ AddPropertyChangedEventHandler 	35
+	AddPropertyChangedEventHandler(element,scope=0x1,cacheRequest=0,handler="",propertyArray="") {
+		SafeArray:=ComObjArray(0x3,propertyArray.MaxIndex())
+		for i,propertyId in propertyArray
+			SafeArray[i-1]:=propertyId
+		return UIA_Hr(DllCall(this.__Vt(35), "ptr",this.__Value, "ptr",element.__Value, "int",scope, "ptr",cacheRequest,"ptr",handler,"ptr",ComObjValue(SafeArray)))
+	}
 	;~ RemovePropertyChangedEventHandler 	36
 	;~ AddStructureChangedEventHandler 	37
 	;~ RemoveStructureChangedEventHandler 	38
-	;~ AddFocusChangedEventHandler 	39
+	AddFocusChangedEventHandler(cacheRequest, handler) {
+		return UIA_Hr(DllCall(this.__Vt(39), "ptr",this.__Value, "ptr",cacheRequest, "ptr",handler))
+	}
 	;~ RemoveFocusChangedEventHandler 	40
 	;~ RemoveAllEventHandlers 	41
 
 	IntNativeArrayToSafeArray(ByRef nArr, n="") {
-		return UIA_Hr(DllCall(this.Vt(42), "ptr",this.__Value, "ptr",&nArr, "int",n?n:VarSetCapacity(nArr)/4, "ptr*",out))? ComObj(0x2003,out,1):
+		return UIA_Hr(DllCall(this.__Vt(42), "ptr",this.__Value, "ptr",&nArr, "int",n?n:VarSetCapacity(nArr)/4, "ptr*",out))? ComObj(0x2003,out,1):
 	}
-	;~ IntSafeArrayToNativeArray(sArr, Byref nArr="", Byref arrayCount="") { ; NOT WORKING
-		;~ VarSetCapacity(nArr,(sArr.MaxIndex()+1)*4)
-		;~ return UIA_Hr(DllCall(this.Vt(43), "ptr",this.__Value, "ptr",ComObjValue(sArr), "ptr*",nArr, "int*",arrayCount))? arrayCount:
-	;~ }
+/*	IntSafeArrayToNativeArray(sArr, Byref nArr="", Byref arrayCount="") { ; NOT WORKING
+		VarSetCapacity(nArr,(sArr.MaxIndex()+1)*4)
+		return UIA_Hr(DllCall(this.__Vt(43), "ptr",this.__Value, "ptr",ComObjValue(sArr), "ptr*",nArr, "int*",arrayCount))? arrayCount:
+	}
+*/
 	RectToVariant(ByRef rect, ByRef out="") {	; in:{left,top,right,bottom} ; out:(left,top,width,height)
 		; in:	RECT Struct
 		; out:	AHK Wrapped SafeArray & ByRef Variant
-		return UIA_Hr(DllCall(this.Vt(44), "ptr",this.__Value, "ptr",&rect, "ptr",UIA_Variant(out)))? UIA_VariantData(out):
+		return UIA_Hr(DllCall(this.__Vt(44), "ptr",this.__Value, "ptr",&rect, "ptr",UIA_Variant(out)))? UIA_VariantData(out):
 	}
-	;~ VariantToRect(ByRef var, ByRef out="") { ; NOT WORKING
-		;~ ; in:	VT_VARIANT (SafeArray)
-		;~ ; out:	AHK Wrapped RECT Struct & ByRef Struct
-		;~ return UIA_Hr(DllCall(this.Vt(45), "ptr",this.__Value, "ptr",var, "ptr",&(out,VarSetCapacity(out,16))))? UIA_RectToObject(out):
-	;~ }
+/*	VariantToRect(ByRef var, ByRef out="") { ; NOT WORKING
+		; in:	VT_VARIANT (SafeArray)
+		; out:	AHK Wrapped RECT Struct & ByRef Struct
+		return UIA_Hr(DllCall(this.__Vt(45), "ptr",this.__Value, "ptr",var, "ptr",&(out,VarSetCapacity(out,16))))? UIA_RectToObject(out):
+	}
+*/
 	;~ SafeArrayToRectNativeArray 	46
 	;~ CreateProxyFactoryEntry 	47
 	GetPropertyProgrammaticName(Id) {
-		return UIA_Hr(DllCall(this.Vt(49), "ptr",this.__Value, "int",Id, "ptr*",out))? StrGet(out):
+		return UIA_Hr(DllCall(this.__Vt(49), "ptr",this.__Value, "int",Id, "ptr*",out))? StrGet(out):
 	}
 	GetPatternProgrammaticName(Id) {
-		return UIA_Hr(DllCall(this.Vt(50), "ptr",this.__Value, "int",Id, "ptr*",out))? StrGet(out):
+		return UIA_Hr(DllCall(this.__Vt(50), "ptr",this.__Value, "int",Id, "ptr*",out))? StrGet(out):
 	}
 	PollForPotentialSupportedPatterns(e, Byref Ids="", Byref Names="") {
-		return UIA_Hr(DllCall(this.Vt(51), "ptr",this.__Value, "ptr",e.__Value, "ptr*",Ids, "ptr*",Names))? UIA_SafeArraysToObject(Names:=ComObj(0x2008,Names,1),Ids:=ComObj(0x2003,Ids,1)):
+		return UIA_Hr(DllCall(this.__Vt(51), "ptr",this.__Value, "ptr",e.__Value, "ptr*",Ids, "ptr*",Names))? UIA_SafeArraysToObject(Names:=ComObj(0x2008,Names,1),Ids:=ComObj(0x2003,Ids,1)):
 	}
 	PollForPotentialSupportedProperties(e, Byref Ids="", Byref Names="") {
-		return UIA_Hr(DllCall(this.Vt(52), "ptr",this.__Value, "ptr",e.__Value, "ptr*",Ids, "ptr*",Names))? UIA_SafeArraysToObject(Names:=ComObj(0x2008,Names,1),Ids:=ComObj(0x2003,Ids,1)):
+		return UIA_Hr(DllCall(this.__Vt(52), "ptr",this.__Value, "ptr",e.__Value, "ptr*",Ids, "ptr*",Names))? UIA_SafeArraysToObject(Names:=ComObj(0x2008,Names,1),Ids:=ComObj(0x2003,Ids,1)):
 	}
 	CheckNotSupported(value) { ; Useless in this Framework???
 	/*	Checks a provided VARIANT to see if it contains the Not Supported identifier.
 		After retrieving a property for a UI Automation element, call this method to determine whether the element supports the 
 		retrieved property. CheckNotSupported is typically called after calling a property retrieving method such as GetCurrentPropertyValue.
 	*/
-		return UIA_Hr(DllCall(this.Vt(53), "ptr",this.__Value, "ptr",value, "int*",out))? out:
+		return UIA_Hr(DllCall(this.__Vt(53), "ptr",this.__Value, "ptr",value, "int*",out))? out:
 	}
 	ElementFromIAccessible(IAcc, childId=0) {
 	/* The method returns E_INVALIDARG - "One or more arguments are not valid" - if the underlying implementation of the
 	Microsoft UI Automation element is not a native Microsoft Active Accessibility server; that is, if a client attempts to retrieve
 	the IAccessible interface for an element originally supported by a proxy object from Oleacc.dll, or by the UIA-to-MSAA Bridge.
 	*/
-		return UIA_Hr(DllCall(this.Vt(56), "ptr",this.__Value, "ptr",ComObjValue(IAcc), "int",childId, "ptr*",out))? new UIA_Element(out):
+		return UIA_Hr(DllCall(this.__Vt(56), "ptr",this.__Value, "ptr",ComObjValue(IAcc), "int",childId, "ptr*",out))? new UIA_Element(out):
 	}
 	;~ ElementFromIAccessibleBuildCache 	57
 }
 
 class UIA_Element extends UIA_Base {
 	;~ http://msdn.microsoft.com/en-us/library/windows/desktop/ee671425(v=vs.85).aspx
-	static IID := "{d22108aa-8ac5-49a5-837b-37bbb3d7591e}"
-		,  get_properties := "|CurrentProcessId,20,int|CurrentControlType,21,CONTROLTYPEID|CurrentLocalizedControlType,22,BSTR|CurrentName,23,BSTR|CurrentAcceleratorKey,24,BSTR|CurrentAccessKey,25,BSTR|CurrentHasKeyboardFocus,26,BOOL|CurrentIsKeyboardFocusable,27,BOOL|CurrentIsEnabled,28,BOOL|CurrentAutomationId,29,BSTR|CurrentClassName,30,BSTR|CurrentHelpText,31,BSTR|CurrentCulture,32,int|CurrentIsControlElement,33,BOOL|CurrentIsContentElement,34,BOOL|CurrentIsPassword,35,BOOL|CurrentNativeWindowHandle,36,UIA_HWND|CurrentItemType,37,BSTR|CurrentIsOffscreen,38,BOOL|CurrentOrientation,39,OrientationType|CurrentFrameworkId,40,BSTR|CurrentIsRequiredForForm,41,BOOL|CurrentItemStatus,42,BSTR|CurrentBoundingRectangle,43,RECT|CurrentLabeledBy,44,IUIAutomationElement|CurrentAriaRole,45,BSTR|CurrentAriaProperties,46,BSTR|CurrentIsDataValidForForm,47,BOOL|CurrentControllerFor,48,IUIAutomationElementArray|CurrentDescribedBy,49,IUIAutomationElementArray|CurrentFlowsTo,50,IUIAutomationElementArray|CurrentProviderDescription,51,BSTR|CachedProcessId,52,int|CachedControlType,53,CONTROLTYPEID|CachedLocalizedControlType,54,BSTR|CachedName,55,BSTR|CachedAcceleratorKey,56,BSTR|CachedAccessKey,57,BSTR|CachedHasKeyboardFocus,58,BOOL|CachedIsKeyboardFocusable,59,BOOL|CachedIsEnabled,60,BOOL|CachedAutomationId,61,BSTR|CachedClassName,62,BSTR|CachedHelpText,63,BSTR|CachedCulture,64,int|CachedIsControlElement,65,BOOL|CachedIsContentElement,66,BOOL|CachedIsPassword,67,BOOL|CachedNativeWindowHandle,68,UIA_HWND|CachedItemType,69,BSTR|CachedIsOffscreen,70,BOOL|CachedOrientation,71,OrientationType|CachedFrameworkId,72,BSTR|CachedIsRequiredForForm,73,BOOL|CachedItemStatus,74,BSTR|CachedBoundingRectangle,75,RECT|CachedLabeledBy,76,IUIAutomationElement|CachedAriaRole,77,BSTR|CachedAriaProperties,78,BSTR|CachedIsDataValidForForm,79,BOOL|CachedControllerFor,80,IUIAutomationElementArray|CachedDescribedBy,81,IUIAutomationElementArray|CachedFlowsTo,82,IUIAutomationElementArray|CachedProviderDescription,83,BSTR|"
+	static __IID := "{d22108aa-8ac5-49a5-837b-37bbb3d7591e}"
+		,  __properties := "CurrentProcessId,20,int`r`nCurrentControlType,21,CONTROLTYPEID`r`nCurrentLocalizedControlType,22,BSTR`r`nCurrentName,23,BSTR`r`nCurrentAcceleratorKey,24,BSTR`r`nCurrentAccessKey,25,BSTR`r`nCurrentHasKeyboardFocus,26,BOOL`r`nCurrentIsKeyboardFocusable,27,BOOL`r`nCurrentIsEnabled,28,BOOL`r`nCurrentAutomationId,29,BSTR`r`nCurrentClassName,30,BSTR`r`nCurrentHelpText,31,BSTR`r`nCurrentCulture,32,int`r`nCurrentIsControlElement,33,BOOL`r`nCurrentIsContentElement,34,BOOL`r`nCurrentIsPassword,35,BOOL`r`nCurrentNativeWindowHandle,36,UIA_HWND`r`nCurrentItemType,37,BSTR`r`nCurrentIsOffscreen,38,BOOL`r`nCurrentOrientation,39,OrientationType`r`nCurrentFrameworkId,40,BSTR`r`nCurrentIsRequiredForForm,41,BOOL`r`nCurrentItemStatus,42,BSTR`r`nCurrentBoundingRectangle,43,RECT`r`nCurrentLabeledBy,44,IUIAutomationElement`r`nCurrentAriaRole,45,BSTR`r`nCurrentAriaProperties,46,BSTR`r`nCurrentIsDataValidForForm,47,BOOL`r`nCurrentControllerFor,48,IUIAutomationElementArray`r`nCurrentDescribedBy,49,IUIAutomationElementArray`r`nCurrentFlowsTo,50,IUIAutomationElementArray`r`nCurrentProviderDescription,51,BSTR`r`nCachedProcessId,52,int`r`nCachedControlType,53,CONTROLTYPEID`r`nCachedLocalizedControlType,54,BSTR`r`nCachedName,55,BSTR`r`nCachedAcceleratorKey,56,BSTR`r`nCachedAccessKey,57,BSTR`r`nCachedHasKeyboardFocus,58,BOOL`r`nCachedIsKeyboardFocusable,59,BOOL`r`nCachedIsEnabled,60,BOOL`r`nCachedAutomationId,61,BSTR`r`nCachedClassName,62,BSTR`r`nCachedHelpText,63,BSTR`r`nCachedCulture,64,int`r`nCachedIsControlElement,65,BOOL`r`nCachedIsContentElement,66,BOOL`r`nCachedIsPassword,67,BOOL`r`nCachedNativeWindowHandle,68,UIA_HWND`r`nCachedItemType,69,BSTR`r`nCachedIsOffscreen,70,BOOL`r`nCachedOrientation,71,OrientationType`r`nCachedFrameworkId,72,BSTR`r`nCachedIsRequiredForForm,73,BOOL`r`nCachedItemStatus,74,BSTR`r`nCachedBoundingRectangle,75,RECT`r`nCachedLabeledBy,76,IUIAutomationElement`r`nCachedAriaRole,77,BSTR`r`nCachedAriaProperties,78,BSTR`r`nCachedIsDataValidForForm,79,BOOL`r`nCachedControllerFor,80,IUIAutomationElementArray`r`nCachedDescribedBy,81,IUIAutomationElementArray`r`nCachedFlowsTo,82,IUIAutomationElementArray`r`nCachedProviderDescription,83,BSTR"
 	
 	SetFocus() {
-		return UIA_Hr(DllCall(this.Vt(3), "ptr",this.__Value))
+		return UIA_Hr(DllCall(this.__Vt(3), "ptr",this.__Value))
 	}
 	GetRuntimeId(ByRef stringId="") {
-		return UIA_Hr(DllCall(this.Vt(4), "ptr",this.__Value, "ptr*",sa))? ComObj(0x2003,sa,1):
+		return UIA_Hr(DllCall(this.__Vt(4), "ptr",this.__Value, "ptr*",sa))? ComObj(0x2003,sa,1):
 	}
 	FindFirst(c="", scope=0x2) {
 		static tc	; TrueCondition
 		if !tc
 			tc:=this.__uia.CreateTrueCondition()
-		return UIA_Hr(DllCall(this.Vt(5), "ptr",this.__Value, "uint",scope, "ptr",(c=""?tc:c).__Value, "ptr*",out))? new UIA_Element(out):
+		return UIA_Hr(DllCall(this.__Vt(5), "ptr",this.__Value, "uint",scope, "ptr",(c=""?tc:c).__Value, "ptr*",out))? new UIA_Element(out):
 	}
 	FindAll(c="", scope=0x2) {
 		static tc	; TrueCondition
 		if !tc
 			tc:=this.__uia.CreateTrueCondition()
-		return UIA_Hr(DllCall(this.Vt(6), "ptr",this.__Value, "uint",scope, "ptr",(c=""?tc:c).__Value, "ptr*",out))? UIA_ElementArray(out):
+		return UIA_Hr(DllCall(this.__Vt(6), "ptr",this.__Value, "uint",scope, "ptr",(c=""?tc:c).__Value, "ptr*",out))? UIA_ElementArray(out):
 	}
 	;~ FindFirstBuildCache 	7	IUIAutomationElement
 	;~ FindAllBuildCache 	8	IUIAutomationElementArray
 	;~ BuildUpdatedCache 	9	IUIAutomationElement
 	GetCurrentPropertyValue(propertyId, ByRef out="") {
-		return UIA_Hr(DllCall(this.Vt(10), "ptr",this.__Value, "uint",propertyId, "ptr",UIA_Variant(out)))? UIA_VariantData(out):
+		return UIA_Hr(DllCall(this.__Vt(10), "ptr",this.__Value, "uint",propertyId, "ptr",UIA_Variant(out)))? UIA_VariantData(out):
 	}
 	GetCurrentPropertyValueEx(propertyId, ignoreDefaultValue=1, ByRef out="") {
 	; Passing FALSE in the ignoreDefaultValue parameter is equivalent to calling GetCurrentPropertyValue
-		return UIA_Hr(DllCall(this.Vt(11), "ptr",this.__Value, "uint",propertyId, "uint",ignoreDefaultValue, "ptr",UIA_Variant(out)))? UIA_VariantData(out):
+		return UIA_Hr(DllCall(this.__Vt(11), "ptr",this.__Value, "uint",propertyId, "uint",ignoreDefaultValue, "ptr",UIA_Variant(out)))? UIA_VariantData(out):
 	}
 	;~ GetCachedPropertyValue 	12	VARIANT
 	;~ GetCachedPropertyValueEx 	13	VARIANT
 	GetCurrentPatternAs(patternid="", riid="") { ; Only LegacyIAccessible so far
 		patternid := 10018
 		riid := UIA_GUID(riid, UIA_LegacyIAccessiblePattern.iid)
-		return UIA_Hr(DllCall(this.Vt(14), "ptr",this.__Value, "int",patternid, "ptr",riid, "ptr*",out))? new UIA_LegacyIAccessiblePattern(out):
+		return UIA_Hr(DllCall(this.__Vt(14), "ptr",this.__Value, "int",patternid, "ptr",riid, "ptr*",out))? new UIA_LegacyIAccessiblePattern(out):
 	}
 	;~ GetCachedPatternAs 	15	void **ppv
 	;~ GetCurrentPattern 	16	Iunknown **patternObject
 	;~ GetCachedPattern 	17	Iunknown **patternObject
 	;~ GetCachedParent 	18	IUIAutomationElement
 	GetCachedChildren() { ; Haven't successfully tested
-		return UIA_Hr(DllCall(this.Vt(19), "ptr",this.__Value, "ptr*",out))&&out? UIA_ElementArray(out):
+		return UIA_Hr(DllCall(this.__Vt(19), "ptr",this.__Value, "ptr*",out))&&out? UIA_ElementArray(out):
 	}
 	;~ GetClickablePoint 	84	POINT, BOOL
 }
 
 class UIA_ElementArray extends UIA_Base {
 	;~ http://msdn.microsoft.com/en-us/library/windows/desktop/ee671426(v=vs.85).aspx
-	static IID := "{14314595-b4bc-4055-95f2-58f2e42c9855}"
-		,  get_properties := "|Length,3,int|"
+	static __IID := "{14314595-b4bc-4055-95f2-58f2e42c9855}"
+		,  __properties := "Length,3,int"
 	
 	GetElement(i) {
-		return UIA_Hr(DllCall(this.Vt(4), "ptr",this.__Value, "int",i, "ptr*",out))? new UIA_Element(out):
+		return UIA_Hr(DllCall(this.__Vt(4), "ptr",this.__Value, "int",i, "ptr*",out))? new UIA_Element(out):
 	}
 }
 
 class UIA_LegacyIAccessiblePattern extends UIA_Base {
 	;~ http://msdn.microsoft.com/en-us/library/windows/desktop/ee696074(v=vs.85).aspx
-	static IID := "{828055ad-355b-4435-86d5-3b51c14a9b1b}"
-		,  get_properties := "|CurrentChildId,6,int|CurrentName,7,BSTR|CurrentValue,8,BSTR|CurrentDescription,9,BSTR|CurrentRole,10,DWORD|CurrentState,11,DWORD|CurrentHelp,12,BSTR|CurrentKeyboardShortcut,13,BSTR|CurrentDefaultAction,15,BSTR|CachedChildId,16,int|CachedName,17,BSTR|CachedValue,18,BSTR|CachedDescription,19,BSTR|CachedRole,20,DWORD|CachedState,21,DWORD|CachedHelp,22,BSTR|CachedKeyboardShortcut,23,BSTR|CachedDefaultAction,25,BSTR|"
+	static __IID := "{828055ad-355b-4435-86d5-3b51c14a9b1b}"
+		,  __properties := "CurrentChildId,6,int`r`nCurrentName,7,BSTR`r`nCurrentValue,8,BSTR`r`nCurrentDescription,9,BSTR`r`nCurrentRole,10,DWORD`r`nCurrentState,11,DWORD`r`nCurrentHelp,12,BSTR`r`nCurrentKeyboardShortcut,13,BSTR`r`nCurrentDefaultAction,15,BSTR`r`nCachedChildId,16,int`r`nCachedName,17,BSTR`r`nCachedValue,18,BSTR`r`nCachedDescription,19,BSTR`r`nCachedRole,20,DWORD`r`nCachedState,21,DWORD`r`nCachedHelp,22,BSTR`r`nCachedKeyboardShortcut,23,BSTR`r`nCachedDefaultAction,25,BSTR"
 
 	Select(flags=3) {
-		return UIA_Hr(DllCall(this.Vt(3), "ptr",this.__Value, "int",flags))
+		return UIA_Hr(DllCall(this.__Vt(3), "ptr",this.__Value, "int",flags))
 	}
 	DoDefaultAction() {
-		return UIA_Hr(DllCall(this.Vt(4), "ptr",this.__Value))
+		return UIA_Hr(DllCall(this.__Vt(4), "ptr",this.__Value))
 	}
 	SetValue(value) {
-		return UIA_Hr(DllCall(this.Vt(5), "ptr",this.__Value, "ptr",&value))
+		return UIA_Hr(DllCall(this.__Vt(5), "ptr",this.__Value, "ptr",&value))
 	}
 	GetCurrentSelection() { ; Not correct
-		;~ if (hr:=DllCall(this.Vt(14), "ptr",this.__Value, "ptr*",array))=0
+		;~ if (hr:=DllCall(this.__Vt(14), "ptr",this.__Value, "ptr*",array))=0
 			;~ return new UIA_ElementArray(array)
 		;~ else
 			;~ MsgBox,, Error, %hr%
@@ -258,102 +275,148 @@ class UIA_LegacyIAccessiblePattern extends UIA_Base {
 	Microsoft Active Accessibility server; that is, if a client attempts to retrieve the IAccessible interface 
 	for an element originally supported by a proxy object from OLEACC.dll, or by the UIA-to-MSAA Bridge.
 	*/
-		return UIA_Hr(DllCall(this.Vt(26), "ptr",this.__Value, "ptr*",pacc)) and pacc? ComObj(9,pacc,1):
+		return UIA_Hr(DllCall(this.__Vt(26), "ptr",this.__Value, "ptr*",pacc)) and pacc? ComObj(9,pacc,1):
 	}
 }
 
 class UIA_TreeWalker extends UIA_Base {
 	;~ http://msdn.microsoft.com/en-us/library/windows/desktop/ee671470(v=vs.85).aspx
-	static IID := "{4042c624-389c-4afc-a630-9df854a541fc}"
-		,  get_properties := "|Condition,15,IUIAutomationCondition|"
+	static __IID := "{4042c624-389c-4afc-a630-9df854a541fc}"
+		,  __properties := "Condition,15,IUIAutomationCondition"
 	
-		GetParentElement(e) {
-			return UIA_Hr(DllCall(this.Vt(3), "ptr",this.__Value, "ptr",e.__Value, "ptr*",out))? new UIA_Element(out):
-		}
+	GetParentElement(e) {
+		return UIA_Hr(DllCall(this.__Vt(3), "ptr",this.__Value, "ptr",e.__Value, "ptr*",out))? new UIA_Element(out):
+	}
 	GetFirstChildElement(e) {
-		return UIA_Hr(DllCall(this.Vt(4), "ptr",this.__Value, "ptr",e.__Value, "ptr*",out))&&out? new UIA_Element(out):
+		return UIA_Hr(DllCall(this.__Vt(4), "ptr",this.__Value, "ptr",e.__Value, "ptr*",out))&&out? new UIA_Element(out):
 	}
 	GetLastChildElement(e) {
-		return UIA_Hr(DllCall(this.Vt(5), "ptr",this.__Value, "ptr",e.__Value, "ptr*",out))&&out? new UIA_Element(out):
+		return UIA_Hr(DllCall(this.__Vt(5), "ptr",this.__Value, "ptr",e.__Value, "ptr*",out))&&out? new UIA_Element(out):
 	}
 	GetNextSiblingElement(e) {
-		return UIA_Hr(DllCall(this.Vt(6), "ptr",this.__Value, "ptr",e.__Value, "ptr*",out))&&out? new UIA_Element(out):
+		return UIA_Hr(DllCall(this.__Vt(6), "ptr",this.__Value, "ptr",e.__Value, "ptr*",out))&&out? new UIA_Element(out):
 	}
 	GetPreviousSiblingElement(e) {
-		return UIA_Hr(DllCall(this.Vt(7), "ptr",this.__Value, "ptr",e.__Value, "ptr*",out))&&out? new UIA_Element(out):
+		return UIA_Hr(DllCall(this.__Vt(7), "ptr",this.__Value, "ptr",e.__Value, "ptr*",out))&&out? new UIA_Element(out):
 	}
-		NormalizeElement(e) {
-			return UIA_Hr(DllCall(this.Vt(8), "ptr",this.__Value, "ptr",e.__Value, "ptr*",out))? new UIA_Element(out):
-		}
-		GetParentElementBuildCache(e, cacheRequest) {
-			return UIA_Hr(DllCall(this.Vt(9), "ptr",this.__Value, "ptr",e.__Value, "ptr",cacheRequest.__Value.__Value, "ptr*",out))? new UIA_Element(out):
-		}
-		GetFirstChildElementBuildCache(e, cacheRequest) {
-			return UIA_Hr(DllCall(this.Vt(10), "ptr",this.__Value, "ptr",e.__Value, "ptr",cacheRequest.__Value, "ptr*",out))? new UIA_Element(out):
-		}
-		GetLastChildElementBuildCache(e, cacheRequest) {
-			return UIA_Hr(DllCall(this.Vt(11), "ptr",this.__Value, "ptr",e.__Value, "ptr",cacheRequest.__Value, "ptr*",out))? new UIA_Element(out):
-		}
-		GetNextSiblingElementBuildCache(e, cacheRequest) {
-			return UIA_Hr(DllCall(this.Vt(12), "ptr",this.__Value, "ptr",e.__Value, "ptr",cacheRequest.__Value, "ptr*",out))? new UIA_Element(out):
-		}
-		GetPreviousSiblingElementBuildCache(e, cacheRequest) {
-			return UIA_Hr(DllCall(this.Vt(13), "ptr",this.__Value, "ptr",e.__Value, "ptr",cacheRequest.__Value, "ptr*",out))? new UIA_Element(out):
-		}
-		NormalizeElementBuildCache(e, cacheRequest) {
-			return UIA_Hr(DllCall(this.Vt(14), "ptr",this.__Value, "ptr",e.__Value, "ptr",cacheRequest.__Value, "ptr*",out))? new UIA_Element(out):
-		}
+	NormalizeElement(e) {
+		return UIA_Hr(DllCall(this.__Vt(8), "ptr",this.__Value, "ptr",e.__Value, "ptr*",out))&&out? new UIA_Element(out):
+	}
+/*	GetParentElementBuildCache(e, cacheRequest) {
+		return UIA_Hr(DllCall(this.__Vt(9), "ptr",this.__Value, "ptr",e.__Value, "ptr",cacheRequest.__Value.__Value, "ptr*",out))? new UIA_Element(out):
+	}
+	GetFirstChildElementBuildCache(e, cacheRequest) {
+		return UIA_Hr(DllCall(this.__Vt(10), "ptr",this.__Value, "ptr",e.__Value, "ptr",cacheRequest.__Value, "ptr*",out))? new UIA_Element(out):
+	}
+	GetLastChildElementBuildCache(e, cacheRequest) {
+		return UIA_Hr(DllCall(this.__Vt(11), "ptr",this.__Value, "ptr",e.__Value, "ptr",cacheRequest.__Value, "ptr*",out))? new UIA_Element(out):
+	}
+	GetNextSiblingElementBuildCache(e, cacheRequest) {
+		return UIA_Hr(DllCall(this.__Vt(12), "ptr",this.__Value, "ptr",e.__Value, "ptr",cacheRequest.__Value, "ptr*",out))? new UIA_Element(out):
+	}
+	GetPreviousSiblingElementBuildCache(e, cacheRequest) {
+		return UIA_Hr(DllCall(this.__Vt(13), "ptr",this.__Value, "ptr",e.__Value, "ptr",cacheRequest.__Value, "ptr*",out))? new UIA_Element(out):
+	}
+	NormalizeElementBuildCache(e, cacheRequest) {
+		return UIA_Hr(DllCall(this.__Vt(14), "ptr",this.__Value, "ptr",e.__Value, "ptr",cacheRequest.__Value, "ptr*",out))? new UIA_Element(out):
+	}
+*/
 }
 
 class UIA_Condition extends UIA_Base {
 	;~ http://msdn.microsoft.com/en-us/library/windows/desktop/ee671420(v=vs.85).aspx
-	static IID := "{352ffba8-0973-437c-a61f-f64cafd81df9}"
+	static __IID := "{352ffba8-0973-437c-a61f-f64cafd81df9}"
 }
 
 class UIA_PropertyCondition extends UIA_Condition {
 	;~ http://msdn.microsoft.com/en-us/library/windows/desktop/ee696121(v=vs.85).aspx
-	static IID := "{99ebf2cb-5578-4267-9ad4-afd6ea77e94b}"
-		,  get_properties := "|PropertyId,3,PROPERTYID|PropertyValue,4,VARIANT|PropertyConditionFlags,5,PropertyConditionFlags|"
+	static __IID := "{99ebf2cb-5578-4267-9ad4-afd6ea77e94b}"
+		,  __properties := "PropertyId,3,PROPERTYID`r`nPropertyValue,4,VARIANT`r`nPropertyConditionFlags,5,PropertyConditionFlags"
 }
 ; should returned children have a condition type (property/and/or/bool/not), or be a generic uia_condition object?
 class UIA_AndCondition extends UIA_Condition {
 	;~ http://msdn.microsoft.com/en-us/library/windows/desktop/ee671407(v=vs.85).aspx
-	static IID := "{a7d0af36-b912-45fe-9855-091ddc174aec}"
-		,  get_properties := "|ChildCount,3,int|"
+	static __IID := "{a7d0af36-b912-45fe-9855-091ddc174aec}"
+		,  __properties := "ChildCount,3,int"
 	
 	;~ GetChildrenAsNativeArray	4	IUIAutomationCondition ***childArray
 	GetChildren() {
-		return UIA_Hr(DllCall(this.Vt(5), "ptr",this.__Value, "ptr*",out))&&out? ComObj(0x2003,out,1):
+		return UIA_Hr(DllCall(this.__Vt(5), "ptr",this.__Value, "ptr*",out))&&out? ComObj(0x2003,out,1):
 	}
 }
 class UIA_OrCondition extends UIA_Condition {
 	;~ http://msdn.microsoft.com/en-us/library/windows/desktop/ee696108(v=vs.85).aspx
-	static IID := "{8753f032-3db1-47b5-a1fc-6e34a266c712}"
-		,  get_properties := "|ChildCount,3,int|"
+	static __IID := "{8753f032-3db1-47b5-a1fc-6e34a266c712}"
+		,  __properties := "ChildCount,3,int"
 	
 	;~ GetChildrenAsNativeArray	4	IUIAutomationCondition ***childArray
 	;~ GetChildren	5	SAFEARRAY
 }
 class UIA_BoolCondition extends UIA_Condition {
 	;~ http://msdn.microsoft.com/en-us/library/windows/desktop/ee671411(v=vs.85).aspx
-	static IID := "{8753f032-3db1-47b5-a1fc-6e34a266c712}"
-		,  get_properties := "|BooleanValue,3,boolVal|"
+	static __IID := "{8753f032-3db1-47b5-a1fc-6e34a266c712}"
+		,  __properties := "BooleanValue,3,boolVal"
 }
 class UIA_NotCondition extends UIA_Condition {
 	;~ http://msdn.microsoft.com/en-us/library/windows/desktop/ee696106(v=vs.85).aspx
-	static IID := "{f528b657-847b-498c-8896-d52b565407a1}"
+	static __IID := "{f528b657-847b-498c-8896-d52b565407a1}"
 	
 	;~ GetChild	3	IUIAutomationCondition
 }
 
 class UIA_IUnknown extends UIA_Base {
 	;~ http://msdn.microsoft.com/en-us/library/windows/desktop/ms680509(v=vs.85).aspx
-	static IID := "{00000000-0000-0000-C000-000000000046}"
+	static __IID := "{00000000-0000-0000-C000-000000000046}"
 }
 
 class UIA_CacheRequest  extends UIA_Base {
 	;~ http://msdn.microsoft.com/en-us/library/windows/desktop/ee671413(v=vs.85).aspx
-	static IID := "{b32a92b5-bc25-4078-9c08-d7ee95c48e03}"
+	static __IID := "{b32a92b5-bc25-4078-9c08-d7ee95c48e03}"
+}
+
+
+class _UIA_EventHandler {
+	;~ http://msdn.microsoft.com/en-us/library/windows/desktop/ee696044(v=vs.85).aspx
+	static __IID := "{146c3c17-f12e-4e22-8c27-f894b9b79c69}"
+	
+/*	HandleAutomationEvent	3
+		[in]  IUIAutomationElement *sender,
+		[in]  EVENTID eventId
+*/
+}
+class _UIA_FocusChangedEventHandler {		
+	;~ http://msdn.microsoft.com/en-us/library/windows/desktop/ee696051(v=vs.85).aspx
+	static __IID := "{c270f6b5-5c69-4290-9745-7a7f97169468}"
+	
+/*	HandleFocusChangedEvent	3
+		[in]  IUIAutomationElement *sender
+*/
+}
+class _UIA_PropertyChangedEventHandler {		
+	;~ http://msdn.microsoft.com/en-us/library/windows/desktop/ee696119(v=vs.85).aspx
+	static __IID := "{40cd37d4-c756-4b0c-8c6f-bddfeeb13b50}"
+	
+/*	HandlePropertyChangedEvent	3
+		[in]  IUIAutomationElement *sender,
+		[in]  PROPERTYID propertyId,
+		[in]  VARIANT newValue
+*/
+}
+class _UIA_StructureChangedEventHandler {		
+	;~ http://msdn.microsoft.com/en-us/library/windows/desktop/ee696197(v=vs.85).aspx
+	static __IID := "{e81d1b4e-11c5-42f8-9754-e7036c79f054}"
+	
+/*	HandleStructureChangedEvent	3
+		[in]  IUIAutomationElement *sender,
+		[in]  StructureChangeType changeType,
+		[in]  SAFEARRAY *runtimeId[int]
+*/
+}
+class _UIA_TextEditTextChangedEventHandler { ; Windows 8.1 Preview [desktop apps only]
+	;~ http://msdn.microsoft.com/en-us/library/windows/desktop/dn302202(v=vs.85).aspx
+	static __IID := "{92FAA680-E704-4156-931A-E32D5BB38F3F}"
+	
+	;~ HandleTextEditTextChangedEvent	3
 }
 
 
@@ -361,7 +424,7 @@ class UIA_CacheRequest  extends UIA_Base {
 	UIA_Interface() {
 		try {
 			if uia:=ComObjCreate("{ff48dba4-60ef-4201-aa87-54103eef594e}","{30cbe57d-d9d0-452a-ab13-7ac5ac4825ee}")
-				return uia:=new UIA_Interface(uia), UIA_Base.__UIA:=uia
+				return uia:=new UIA_Interface(uia), uia.base.base.__UIA:=uia
 			throw "UIAutomation Interface failed to initialize."
 		} catch e
 			MsgBox, 262160, UIA Startup Error, % IsObject(e)?"IUIAutomation Interface is not registered.":e.Message
@@ -484,7 +547,25 @@ MsgBox(msg) {
 	MsgBox %msg%
 }
 
+/*
+enum TreeScope
+    {	TreeScope_Element	= 0x1,
+	TreeScope_Children	= 0x2,
+	TreeScope_Descendants	= 0x4,
+	TreeScope_Parent	= 0x8,
+	TreeScope_Ancestors	= 0x10,
+	TreeScope_Subtree	= ( ( TreeScope_Element | TreeScope_Children )  | TreeScope_Descendants ) 
+    } ;
 
+DllCall("oleaut32\SafeArrayGetVartype", "ptr*",ComObjValue(SafeArray), "uint*",pvt)
+HRESULT SafeArrayGetVartype(
+  _In_   SAFEARRAY *psa,
+  _Out_  VARTYPE *pvt
+);
 
+DllCall("oleaut32\SafeArrayDestroy", "ptr",ComObjValue(SafeArray))
+HRESULT SafeArrayDestroy(
+  _In_  SAFEARRAY *psa
+);
 
 
