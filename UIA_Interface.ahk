@@ -13,11 +13,14 @@
 	- returning varaint data other than vt=3|8|9|13|0x2000
 	- Cached Members?
 	- UIA Element existance - dependent on window being visible (non minimized)?
+	- function(params, ByRef out="……")
 */
 
 class UIA_Base {
-	__New(p="") {
-		ObjInsert(this,"__Type","IUIAutomation" SubStr(this.__Class,5)),ObjInsert(this,"__Value",p)
+	__New(p="", flag=1) {
+		ObjInsert(this,"__Type","IUIAutomation" SubStr(this.__Class,5))
+		,ObjInsert(this,"__Value",p)
+		,ObjInsert(this,"__Flag",flag)
 	}
 	__Get(member) {
 		if member not in base,__UIA ; base & __UIA should act as normal
@@ -42,7 +45,7 @@ class UIA_Base {
 			throw Exception("Method Call not supported by the " this.__Class " Class.",-1,member)
 	}
 	__Delete() {
-		ObjRelease(this.__Value)
+		this.__Flag? ObjRelease(this.__Value):
 	}
 	__Vt(n) {
 		return NumGet(NumGet(this.__Value+0,"ptr")+n*A_PtrSize,"ptr")
@@ -76,8 +79,8 @@ class UIA_Interface extends UIA_Base {
 	;~ ElementFromHandleBuildCache 	10
 	;~ ElementFromPointBuildCache 	11
 	;~ GetFocusedElementBuildCache 	12
-	CreateTreeWalker() {
-		return UIA_Hr(DllCall(this.__Vt(13), "ptr",this.__Value, "ptr",pCondition, "ptr*",out))? new UIA_TreeWalker(out):
+	CreateTreeWalker(condition) {
+		return UIA_Hr(DllCall(this.__Vt(13), "ptr",this.__Value, "ptr",Condition.__Value, "ptr*",out))? new UIA_TreeWalker(out):
 	}
 	;~ CreateCacheRequest 	20
 
@@ -92,7 +95,12 @@ class UIA_Interface extends UIA_Base {
 			UIA_Variant(var,type,var)
 		return UIA_Hr(DllCall(this.__Vt(23), "ptr",this.__Value, "int",propertyId, "ptr",&var, "ptr*",out))? new UIA_PropertyCondition(out):
 	}
-	;~ CreatePropertyConditionEx 	24
+	CreatePropertyConditionEx(propertyId, ByRef var, type="Variant", flags=0x1) { ; NOT TESTED
+	; PropertyConditionFlags_IgnoreCase = 0x1
+		if (type!="Variant")
+			UIA_Variant(var,type,var)
+		return UIA_Hr(DllCall(this.__Vt(24), "ptr",this.__Value, "int",propertyId, "ptr",&var, "uint",flags, "ptr*",out))? new UIA_PropertyCondition(out):
+	}
 	CreateAndCondition(c1,c2) {
 		return UIA_Hr(DllCall(this.__Vt(25), "ptr",this.__Value, "ptr",c1.__Value, "ptr",c2.__Value, "ptr*",out))? new UIA_AndCondition(out):
 	}
@@ -107,16 +115,36 @@ class UIA_Interface extends UIA_Base {
 		}
 		return UIA_Hr(DllCall(this.__Vt(26), "ptr",this.__Value, "ptr",ComObjValue(SafeArray), "ptr*",out))? new UIA_AndCondition(out):
 	}
-/*	CreateAndConditionFromNativeArray 	27
-		[in]           IUIAutomationCondition **conditions,
+	CreateAndConditionFromNativeArray(p*) { ; Not Implemented
+		return UIA_NotImplemented()
+	/*	[in]           IUIAutomationCondition **conditions,
 		[in]           int conditionCount,
 		[out, retval]  IUIAutomationCondition **newCondition
-*/
+	*/
+		;~ return UIA_Hr(DllCall(this.__Vt(27), "ptr",this.__Value,
+	}
 	CreateOrCondition(c1,c2) {
 		return UIA_Hr(DllCall(this.__Vt(28), "ptr",this.__Value, "ptr",c1.__Value, "ptr",c2.__Value, "ptr*",out))? new UIA_OrCondition(out):
 	}
-	;~ CreateOrConditionFromArray 	29
-	;~ CreateOrConditionFromNativeArray 	30
+	CreateOrConditionFromArray(array) {
+	;->in: AHK Array or Wrapped SafeArray
+		if ComObjValue(array)&0x2000
+			SafeArray:=array
+		else {
+			SafeArray:=ComObj(0x2003,DllCall("oleaut32\SafeArrayCreateVector", "uint",13, "uint",0, "uint",array.MaxIndex()),1)
+			for i,c in array
+				SafeArray[A_Index-1]:=c.__Value, ObjAddRef(c.__Value) ; AddRef - SafeArrayDestroy will release UIA_Conditions - they also release themselves
+		}
+		return UIA_Hr(DllCall(this.__Vt(29), "ptr",this.__Value, "ptr",ComObjValue(SafeArray), "ptr*",out))? new UIA_AndCondition(out):
+	}
+	CreateOrConditionFromNativeArray(p*) { ; Not Implemented
+		return UIA_NotImplemented()
+	/*	[in]           IUIAutomationCondition **conditions,
+		[in]           int conditionCount,
+		[out, retval]  IUIAutomationCondition **newCondition
+	*/
+		;~ return UIA_Hr(DllCall(this.__Vt(27), "ptr",this.__Value,
+	}
 	CreateNotCondition(c) {
 		return UIA_Hr(DllCall(this.__Vt(31), "ptr",this.__Value, "ptr",c.__Value, "ptr*",out))? new UIA_NotCondition(out):
 	}
@@ -128,13 +156,13 @@ class UIA_Interface extends UIA_Base {
 		SafeArray:=ComObjArray(0x3,propertyArray.MaxIndex())
 		for i,propertyId in propertyArray
 			SafeArray[i-1]:=propertyId
-		return UIA_Hr(DllCall(this.__Vt(35), "ptr",this.__Value, "ptr",element.__Value, "int",scope, "ptr",cacheRequest,"ptr",handler,"ptr",ComObjValue(SafeArray)))
+		return UIA_Hr(DllCall(this.__Vt(35), "ptr",this.__Value, "ptr",element.__Value, "int",scope, "ptr",cacheRequest,"ptr",handler.__Value,"ptr",ComObjValue(SafeArray)))
 	}
 	;~ RemovePropertyChangedEventHandler 	36
 	;~ AddStructureChangedEventHandler 	37
 	;~ RemoveStructureChangedEventHandler 	38
 	AddFocusChangedEventHandler(cacheRequest, handler) {
-		return UIA_Hr(DllCall(this.__Vt(39), "ptr",this.__Value, "ptr",cacheRequest, "ptr",handler))
+		return UIA_Hr(DllCall(this.__Vt(39), "ptr",this.__Value, "ptr",cacheRequest, "ptr",handler.__Value))
 	}
 	;~ RemoveFocusChangedEventHandler 	40
 	;~ RemoveAllEventHandlers 	41
@@ -212,6 +240,7 @@ class UIA_Element extends UIA_Base {
 			tc:=this.__uia.CreateTrueCondition()
 		return UIA_Hr(DllCall(this.__Vt(6), "ptr",this.__Value, "uint",scope, "ptr",(c=""?tc:c).__Value, "ptr*",out))? UIA_ElementArray(out):
 	}
+	;~ Find (First/All, Element/Children/Descendants/Parent/Ancestors/Subtree, Conditions)
 	;~ FindFirstBuildCache 	7	IUIAutomationElement
 	;~ FindAllBuildCache 	8	IUIAutomationElementArray
 	;~ BuildUpdatedCache 	9	IUIAutomationElement
@@ -224,10 +253,10 @@ class UIA_Element extends UIA_Base {
 	}
 	;~ GetCachedPropertyValue 	12	VARIANT
 	;~ GetCachedPropertyValueEx 	13	VARIANT
-	GetCurrentPatternAs(patternid="", riid="") { ; Only LegacyIAccessible so far
-		patternid := 10018
-		riid := UIA_GUID(riid, UIA_LegacyIAccessiblePattern.iid)
-		return UIA_Hr(DllCall(this.__Vt(14), "ptr",this.__Value, "int",patternid, "ptr",riid, "ptr*",out))? new UIA_LegacyIAccessiblePattern(out):
+	GetCurrentPatternAs(pattern="") {
+		if IsObject(UIA_%pattern%Pattern)&&(iid:=UIA_%pattern%Pattern.__iid)&&(pId:=UIA_%pattern%Pattern.__PatternID)
+			return UIA_Hr(DllCall(this.__Vt(14), "ptr",this.__Value, "int",pId, "ptr",UIA_GUID(riid,iid), "ptr*",out))? new UIA_%pattern%Pattern(out):
+		else throw Exception("Pattern not implemented.",-1, "UIA_" pattern "Pattern")
 	}
 	;~ GetCachedPatternAs 	15	void **ppv
 	;~ GetCurrentPattern 	16	Iunknown **patternObject
@@ -246,36 +275,6 @@ class UIA_ElementArray extends UIA_Base {
 	
 	GetElement(i) {
 		return UIA_Hr(DllCall(this.__Vt(4), "ptr",this.__Value, "int",i, "ptr*",out))? new UIA_Element(out):
-	}
-}
-
-class UIA_LegacyIAccessiblePattern extends UIA_Base {
-	;~ http://msdn.microsoft.com/en-us/library/windows/desktop/ee696074(v=vs.85).aspx
-	static __IID := "{828055ad-355b-4435-86d5-3b51c14a9b1b}"
-		,  __properties := "CurrentChildId,6,int`r`nCurrentName,7,BSTR`r`nCurrentValue,8,BSTR`r`nCurrentDescription,9,BSTR`r`nCurrentRole,10,DWORD`r`nCurrentState,11,DWORD`r`nCurrentHelp,12,BSTR`r`nCurrentKeyboardShortcut,13,BSTR`r`nCurrentDefaultAction,15,BSTR`r`nCachedChildId,16,int`r`nCachedName,17,BSTR`r`nCachedValue,18,BSTR`r`nCachedDescription,19,BSTR`r`nCachedRole,20,DWORD`r`nCachedState,21,DWORD`r`nCachedHelp,22,BSTR`r`nCachedKeyboardShortcut,23,BSTR`r`nCachedDefaultAction,25,BSTR"
-
-	Select(flags=3) {
-		return UIA_Hr(DllCall(this.__Vt(3), "ptr",this.__Value, "int",flags))
-	}
-	DoDefaultAction() {
-		return UIA_Hr(DllCall(this.__Vt(4), "ptr",this.__Value))
-	}
-	SetValue(value) {
-		return UIA_Hr(DllCall(this.__Vt(5), "ptr",this.__Value, "ptr",&value))
-	}
-	GetCurrentSelection() { ; Not correct
-		;~ if (hr:=DllCall(this.__Vt(14), "ptr",this.__Value, "ptr*",array))=0
-			;~ return new UIA_ElementArray(array)
-		;~ else
-			;~ MsgBox,, Error, %hr%
-	}
-	;~ GetCachedSelection	24	IUIAutomationElementArray
-	GetIAccessible() {
-	/*	This method returns NULL if the underlying implementation of the UI Automation element is not a native 
-	Microsoft Active Accessibility server; that is, if a client attempts to retrieve the IAccessible interface 
-	for an element originally supported by a proxy object from OLEACC.dll, or by the UIA-to-MSAA Bridge.
-	*/
-		return UIA_Hr(DllCall(this.__Vt(26), "ptr",this.__Value, "ptr*",pacc)) and pacc? ComObj(9,pacc,1):
 	}
 }
 
@@ -420,6 +419,207 @@ class _UIA_TextEditTextChangedEventHandler { ; Windows 8.1 Preview [desktop apps
 }
 
 
+;~ 		UIA_Patterns - http://msdn.microsoft.com/en-us/library/windows/desktop/ee684023
+class UIA_DockPattern extends UIA_Base {
+	;~ http://msdn.microsoft.com/en-us/library/windows/desktop/ee671421
+	static	__IID := "{fde5ef97-1464-48f6-90bf-43d0948e86ec}"
+		,	__PatternID := 10011
+		,	__Properties := "CurrentDockPosition,4,int`r`nCachedDockPosition,5,int"
+
+	SetDockPosition(Pos) {
+		return UIA_Hr(DllCall(this.__Vt(3), "ptr",this.__Value, "uint",pos))
+	}
+/*	DockPosition_Top	= 0,
+	DockPosition_Left	= 1,
+	DockPosition_Bottom	= 2,
+	DockPosition_Right	= 3,
+	DockPosition_Fill	= 4,
+	DockPosition_None	= 5
+*/
+}
+class UIA_ExpandCollapsePattern extends UIA_Base {
+	;~ http://msdn.microsoft.com/en-us/library/windows/desktop/ee696046
+	static	__IID := "{619be086-1f4e-4ee4-bafa-210128738730}"
+		,	__PatternID := 10005
+		,	__Properties := "CachedExpandCollapseState,6,int`r`nCurrentExpandCollapseState,5,int"
+	
+	Expand() {
+		return UIA_Hr(DllCall(this.__Vt(3), "ptr",this.__Value))
+	}
+	Collapse() {
+		return UIA_Hr(DllCall(this.__Vt(4), "ptr",this.__Value))
+	}	
+/*	ExpandCollapseState_Collapsed	= 0,
+	ExpandCollapseState_Expanded	= 1,
+	ExpandCollapseState_PartiallyExpanded	= 2,
+	ExpandCollapseState_LeafNode	= 3
+*/
+}
+class UIA_GridItemPattern extends UIA_Base {
+	;~ http://msdn.microsoft.com/en-us/library/windows/desktop/ee696053
+	static	__IID := "{78f8ef57-66c3-4e09-bd7c-e79b2004894d}"
+		,	__PatternID := 10007
+		,	__Properties := "CurrentContainingGrid,3,IUIAutomationElement`r`nCurrentRow,4,int`r`nCurrentColumn,5,int`r`nCurrentRowSpan,6,int`r`nCurrentColumnSpan,7,int`r`nCachedContainingGrid,8,IUIAutomationElement`r`nCachedRow,9,int`r`nCachedColumn,10,int`r`nCachedRowSpan,11,int`r`nCachedColumnSpan,12,int"
+}
+class UIA_GridPattern extends UIA_Base {
+	;~ http://msdn.microsoft.com/en-us/library/windows/desktop/ee696064
+	static	__IID := "{414c3cdc-856b-4f5b-8538-3131c6302550}"
+		,	__PatternID := 10006
+		,	__Properties := "CurrentRowCount,4,int`r`nCurrentColumnCount,5,int`r`nCachedRowCount,6,int`r`nCachedColumnCount,7,int"
+
+	GetItem(row,column) { ; Hr!=0 if no result, or blank output?
+		return UIA_Hr(DllCall(this.__Vt(3), "ptr",this.__Value, "uint",row, "uint",column, "ptr*",out))? new UIA_Element(out):
+	}
+}
+class UIA_InvokePattern extends UIA_Base {
+	;~ http://msdn.microsoft.com/en-us/library/windows/desktop/ee696070
+	static	__IID := "{fb377fbe-8ea6-46d5-9c73-6499642d3059}"
+		,	__PatternID := 10000
+	
+	Invoke() {
+		return UIA_Hr(DllCall(this.__Vt(3), "ptr",this.__Value))
+	}
+}
+class UIA_ItemContainerPattern extends UIA_Base {
+	;~ http://msdn.microsoft.com/en-us/library/windows/desktop/ee696072
+	static	__IID := "{c690fdb2-27a8-423c-812d-429773c9084e}"
+		,	__PatternID := 10019
+
+	FindItemByProperty(startAfter, propertyId, ByRef value, type=8) {	; Hr!=0 if no result, or blank output?
+		if (type!="Variant")
+			UIA_Variant(value,type,value)
+		return UIA_Hr(DllCall(this.__Vt(3), "ptr",this.__Value, "ptr",startAfter.__Value, "int",propertyId, "ptr",&value, "ptr*",out))? UIA_Element(out):
+	}
+}
+class UIA_LegacyIAccessiblePattern extends UIA_Base {
+	;~ http://msdn.microsoft.com/en-us/library/windows/desktop/ee696074
+	static	__IID := "{828055ad-355b-4435-86d5-3b51c14a9b1b}"
+		,	__PatternID := 10018
+		,	__Properties := "CurrentChildId,6,int`r`nCurrentName,7,BSTR`r`nCurrentValue,8,BSTR`r`nCurrentDescription,9,BSTR`r`nCurrentRole,10,DWORD`r`nCurrentState,11,DWORD`r`nCurrentHelp,12,BSTR`r`nCurrentKeyboardShortcut,13,BSTR`r`nCurrentDefaultAction,15,BSTR`r`nCachedChildId,16,int`r`nCachedName,17,BSTR`r`nCachedValue,18,BSTR`r`nCachedDescription,19,BSTR`r`nCachedRole,20,DWORD`r`nCachedState,21,DWORD`r`nCachedHelp,22,BSTR`r`nCachedKeyboardShortcut,23,BSTR`r`nCachedDefaultAction,25,BSTR"
+
+	Select(flags=3) {
+		return UIA_Hr(DllCall(this.__Vt(3), "ptr",this.__Value, "int",flags))
+	}
+	DoDefaultAction() {
+		return UIA_Hr(DllCall(this.__Vt(4), "ptr",this.__Value))
+	}
+	SetValue(value) {
+		return UIA_Hr(DllCall(this.__Vt(5), "ptr",this.__Value, "ptr",&value))
+	}
+	GetCurrentSelection() { ; Not correct
+		;~ if (hr:=DllCall(this.__Vt(14), "ptr",this.__Value, "ptr*",array))=0
+			;~ return new UIA_ElementArray(array)
+		;~ else
+			;~ MsgBox,, Error, %hr%
+	}
+	;~ GetCachedSelection	24	IUIAutomationElementArray
+	GetIAccessible() {
+	/*	This method returns NULL if the underlying implementation of the UI Automation element is not a native 
+	Microsoft Active Accessibility server; that is, if a client attempts to retrieve the IAccessible interface 
+	for an element originally supported by a proxy object from OLEACC.dll, or by the UIA-to-MSAA Bridge.
+	*/
+		return UIA_Hr(DllCall(this.__Vt(26), "ptr",this.__Value, "ptr*",pacc))&&pacc? ComObj(9,pacc,1):
+	}
+}
+class UIA_MultipleViewPattern extends UIA_Base {
+	;~ http://msdn.microsoft.com/en-us/library/windows/desktop/ee696099
+	static	__IID := "{8d253c91-1dc5-4bb5-b18f-ade16fa495e8}"
+		,	__PatternID := 10008
+		,	__Properties := "CurrentCurrentView,5,int`r`nCachedCurrentView,7,int"
+
+	GetViewName(view) { ; need to release BSTR?
+		return UIA_Hr(DllCall(this.__Vt(3), "ptr",this.__Value, "int",view, "ptr*",name))? StrGet(name):
+	}
+	SetCurrentView(view) {
+		return UIA_Hr(DllCall(this.__Vt(4), "ptr",this.__Value, "int",view))
+	}
+	GetCurrentSupportedViews() {
+		return UIA_Hr(DllCall(this.__Vt(6), "ptr",this.__Value, "ptr*",out))? ComObj(0x2003,out,1):
+	}
+	GetCachedSupportedViews() {
+		return UIA_Hr(DllCall(this.__Vt(8), "ptr",this.__Value, "ptr*",out))? ComObj(0x2003,out,1):
+	}
+}
+class UIA_RangeValuePattern extends UIA_Base {
+	;~ http://msdn.microsoft.com/en-us/library/windows/desktop/ee696147
+	static	__IID := "{59213f4f-7346-49e5-b120-80555987a148}"
+		,	__PatternID := 10003
+		,	__Properties := "CurrentValue,4,double`r`nCurrentIsReadOnly,5,BOOL`r`nCurrentMaximum,6,double`r`nCurrentMinimum,7,double`r`nCurrentLargeChange,8,double`r`nCurrentSmallChange,9,double`r`nCachedValue,10,double`r`nCachedIsReadOnly,11,BOOL`r`nCachedMaximum,12,double`r`nCachedMinimum,13,double`r`nCachedLargeChange,14,double`r`nCachedSmallChange,15,double"
+
+	SetValue(val) {
+		return UIA_Hr(DllCall(this.__Vt(3), "ptr",this.__Value, "double",val))
+	}
+}
+class UIA_ScrollItemPattern extends UIA_Base {
+	;~ http://msdn.microsoft.com/en-us/library/windows/desktop/ee696165
+	static	__IID := "{b488300f-d015-4f19-9c29-bb595e3645ef}"
+		,	__PatternID := 10017
+
+	ScrollIntoView() {
+		return UIA_Hr(DllCall(this.__Vt(3), "ptr",this.__Value))
+	}
+}
+class UIA_ScrollPattern extends UIA_Base {
+	;~ http://msdn.microsoft.com/en-us/library/windows/desktop/ee696167
+	static	__IID := "{88f4d42a-e881-459d-a77c-73bbbb7e02dc}"
+		,	__PatternID := 10004
+		,	__Properties := "CurrentHorizontalScrollPercent,5,double`r`nCurrentVerticalScrollPercent,6,double`r`nCurrentHorizontalViewSize,7,double`r`CurrentHorizontallyScrollable,9,BOOL`r`nCurrentVerticallyScrollable,10,BOOL`r`nCachedHorizontalScrollPercent,11,double`r`nCachedVerticalScrollPercent,12,double`r`nCachedHorizontalViewSize,13,double`r`nCachedVerticalViewSize,14,double`r`nCachedHorizontallyScrollable,15,BOOL`r`nCachedVerticallyScrollable,16,BOOL"
+		
+	Scroll(horizontal, vertical) {
+		return UIA_Hr(DllCall(this.__Vt(3), "ptr",this.__Value, "uint",horizontal, "uint",vertical))
+	}
+	SetScrollPercent(horizontal, vertical) {
+		return UIA_Hr(DllCall(this.__Vt(4), "ptr",this.__Value, "double",horizontal, "double",vertical))
+	}
+/*	UIA_ScrollPatternNoScroll	=	-1
+	ScrollAmount_LargeDecrement	= 0,
+	ScrollAmount_SmallDecrement	= 1,
+	ScrollAmount_NoAmount	= 2,
+	ScrollAmount_LargeIncrement	= 3,
+	ScrollAmount_SmallIncrement	= 4
+*/
+}
+;~ class UIA_SelectionItemPattern extends UIA_Base {10010
+;~ class UIA_SelectionPattern extends UIA_Base {10001
+;~ class UIA_SpreadsheetItemPattern extends UIA_Base {10027
+;~ class UIA_SpreadsheetPattern extends UIA_Base {10026
+;~ class UIA_StylesPattern extends UIA_Base {10025
+;~ class UIA_SynchronizedInputPattern extends UIA_Base {10021
+;~ class UIA_TableItemPattern extends UIA_Base {10013
+;~ class UIA_TablePattern extends UIA_Base {10012
+;~ class UIA_TextChildPattern extends UIA_Base {10029
+;~ class UIA_TextEditPattern extends UIA_Base {10032
+;~ class UIA_TextPattern extends UIA_Base {10014
+;~ class UIA_TextPattern2 extends UIA_Base {10024
+;~ class UIA_TogglePattern extends UIA_Base {10015
+;~ class UIA_TransformPattern extends UIA_Base {10016
+;~ class UIA_TransformPattern2 extends UIA_Base {10028
+;~ class UIA_ValuePattern extends UIA_Base {10002
+;~ class UIA_VirtualizedItemPattern extends UIA_Base {10020
+;~ class UIA_WindowPattern extends UIA_Base {10009
+;~ class UIA_AnnotationPattern extends UIA_Base {10023		; Windows 8 [desktop apps only]
+;~ class UIA_DragPattern extends UIA_Base {10030			; Windows 8 [desktop apps only]
+;~ class UIA_DropTargetPattern extends UIA_Base {10031		; Windows 8 [desktop apps only]
+/* class UIA_ObjectModelPattern extends UIA_Base {			; Windows 8 [desktop apps only]
+	;~ http://msdn.microsoft.com/en-us/library/windows/desktop/hh437262(v=vs.85).aspx
+	static	__IID := "{71c284b3-c14d-4d14-981e-19751b0d756d}"
+		,	__PatternID := 10022
+	
+	GetUnderlyingObjectModel() {
+		return UIA_Hr(DllCall(this.__Vt(3), "ptr",this.__Value))
+	}
+}
+*/
+
+;~ class UIA_PatternHandler extends UIA_Base {
+;~ class UIA_PatternInstance extends UIA_Base {
+;~ class UIA_TextRange extends UIA_Base {
+;~ class UIA_TextRange2 extends UIA_Base {
+;~ class UIA_TextRangeArray extends UIA_Base {
+
+
+
+
 {  ;~ UIA Functions
 	UIA_Interface() {
 		try {
@@ -437,6 +637,10 @@ class _UIA_TextEditTextChangedEventHandler { ; Windows 8.1 Preview [desktop apps
 			throw Exception(UIA_Hex(hr) " - " err[hr], -2, i2 "  (" i1 ")")
 		}
 		return !hr
+	}
+	UIA_NotImplemented() {
+		RegExMatch(Exception("",-2).What,"(\D+)\.(\D+)",m)
+		MsgBox, 262192, UIA Message, Class:`t%m1%`nMember:`t%m2%`n`nMethod has not been implemented yet.
 	}
 	UIA_ElementArray(p, uia="") { ; should AHK Object be 0 or 1 based?
 		a:=new UIA_ElementArray(p),out:=[]
@@ -480,15 +684,17 @@ class _UIA_TextEditTextChangedEventHandler { ; Windows 8.1 Preview [desktop apps
 		size:=VarSetCapacity(vt),type:=NumGet(vt,"UShort")
 		return size>=16&&size<=24&&type>=0&&(type<=23||type|0x2000)
 	}
+	UIA_Type(ByRef item, ByRef info) {
+	}
 	UIA_VariantData(ByRef p, flag=1) {
 		; based on Sean's COM_Enumerate function
 		; need to clear varaint? what if you still need it (flag param)?
-		return !UIA_IsVariant(p,vt)? "Invalid Variant"
-			: vt=3?	NumGet(p,8,"int")
-			: vt=8? StrGet(NumGet(p,8))
-			: vt=9||vt=13||vt&0x2000? ComObj(vt,NumGet(p,8),flag)
-			: vt<0x1000&&UIA_VariantChangeType(&p,&p)=0? StrGet(NumGet(p,8)) UIA_VariantClear(&p)
-			: NumGet(p,8)
+		return !UIA_IsVariant(p,vt)?"Invalid Variant"
+				:vt=3?NumGet(p,8,"int")
+				:vt=8?StrGet(NumGet(p,8))
+				:vt=9||vt=13||vt&0x2000?ComObj(vt,NumGet(p,8),flag)
+				:vt<0x1000&&UIA_VariantChangeType(&p,&p)=0?StrGet(NumGet(p,8)) UIA_VariantClear(&p)
+				:NumGet(p,8)
 	/*
 		VT_EMPTY     =      0  		; No value
 		VT_NULL      =      1 		; SQL-style Null
