@@ -488,7 +488,7 @@ class UIA_ItemContainerPattern extends UIA_Base {
 	FindItemByProperty(startAfter, propertyId, ByRef value, type=8) {	; Hr!=0 if no result, or blank output?
 		if (type!="Variant")
 			UIA_Variant(value,type,value)
-		return UIA_Hr(DllCall(this.__Vt(3), "ptr",this.__Value, "ptr",startAfter.__Value, "int",propertyId, "ptr",&value, "ptr*",out))? UIA_Element(out):
+		return UIA_Hr(DllCall(this.__Vt(3), "ptr",this.__Value, "ptr",startAfter.__Value, "int",propertyId, "ptr",&value, "ptr*",out))? new UIA_Element(out):
 	}
 }
 class UIA_LegacyIAccessiblePattern extends UIA_Base {
