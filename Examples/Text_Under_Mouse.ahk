@@ -1,0 +1,1 @@
+# Get text under mouse
