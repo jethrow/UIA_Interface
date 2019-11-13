@@ -592,6 +592,17 @@ class UIA_ScrollPattern extends UIA_Base {
 ;~ class UIA_TextPattern extends UIA_Base {10014
 ;~ class UIA_TextPattern2 extends UIA_Base {10024
 ;~ class UIA_TogglePattern extends UIA_Base {10015
+class UIA_TogglePattern extends UIA_Base
+{
+   ; from user "malcev" @ https://www.autohotkey.com/boards/viewtopic.php?p=300889#p300889
+   ; https://docs.microsoft.com/en-us/windows/win32/api/uiautomationclient/nn-uiautomationclient-iuiautomationtogglepattern
+   static __IID := "{94cf8058-9b8d-4ab9-8bfd-4cd0a33c8c70}", __PatternID := 10015, __Properties := "CurrentToggleState,4,int`r`nCachedToggleState,5,int"
+   Toggle()
+   {
+      return UIA_Hr(DllCall(this.__Vt(3), "ptr",this.__Value))
+   }
+}
+
 ;~ class UIA_TransformPattern extends UIA_Base {10016
 ;~ class UIA_TransformPattern2 extends UIA_Base {10028
 ;~ class UIA_ValuePattern extends UIA_Base {10002
